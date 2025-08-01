@@ -228,8 +228,8 @@ const LoginPage: React.FC = () => {
         <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <p className="text-sm text-blue-800 font-medium mb-2">Credenciales de demo:</p>
           <div className="text-xs text-blue-700 space-y-1">
-            <p><strong>Admin:</strong> admin@inventory.com / admin123</p>
-            <p><strong>Usuario:</strong> user@inventory.com / user123</p>
+            <p><strong>Admin:</strong> admin@inventory.com / password</p>
+            <p><strong>Usuario:</strong> user@inventory.com / password</p>
           </div>
         </div>
       </div>

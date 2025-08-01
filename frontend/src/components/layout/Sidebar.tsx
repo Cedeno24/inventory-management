@@ -1,6 +1,6 @@
 // ===============================================
-// PASO 9.7 - frontend/src/components/layout/Sidebar.tsx
-// COMPONENTE SIDEBAR
+// PASO CORREGIDO - frontend/src/components/layout/Sidebar.tsx
+// COMPONENTE SIDEBAR - NAVEGACIÓN CORREGIDA
 // ===============================================
 
 import React from 'react';
@@ -23,7 +23,7 @@ interface NavigationItem {
 }
 
 // ===============================================
-// ICONOS SVG
+// ICONOS SVG - SIMPLIFICADOS PARA MEJOR RENDIMIENTO
 // ===============================================
 const DashboardIcon = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -57,7 +57,7 @@ const UsersIcon = () => (
 );
 
 // ===============================================
-// NAVEGACIÓN
+// NAVEGACIÓN - RUTAS CORREGIDAS
 // ===============================================
 const navigation: NavigationItem[] = [
   { name: 'Dashboard', href: '/dashboard', icon: <DashboardIcon /> },
@@ -68,43 +68,51 @@ const navigation: NavigationItem[] = [
 ];
 
 // ===============================================
-// COMPONENTE PRINCIPAL
+// COMPONENTE PRINCIPAL - CORREGIDO
 // ===============================================
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const location = useLocation();
 
   // ===============================================
-  // COMPONENTE DE NAVEGACIÓN
+  // COMPONENTE DE NAVEGACIÓN - SIMPLIFICADO
   // ===============================================
   const Navigation = () => (
     <nav className="mt-8 flex-1 px-2 space-y-1">
       {navigation.map((item) => {
-        const isActive = location.pathname === item.href || 
-                        location.pathname.startsWith(item.href + '/');
+        // Lógica simplificada para determinar si está activo
+        const isCurrentRoute = location.pathname === item.href || 
+                              (item.href !== '/dashboard' && location.pathname.startsWith(item.href));
         
         return (
           <NavLink
             key={item.name}
             to={item.href}
-            className={({ isActive: navIsActive }) =>
+            className={({ isActive }) =>
               clsx(
-                'group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors',
-                navIsActive || isActive
-                  ? 'bg-primary-100 text-primary-900 border-r-2 border-primary-600'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                'group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-all duration-200',
+                // Usar isActive de NavLink como fuente principal de verdad
+                isActive || isCurrentRoute
+                  ? 'bg-primary-100 text-primary-900 border-r-2 border-primary-600 shadow-sm'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm'
               )
             }
-            onClick={() => onClose()}
+            onClick={(e) => {
+              // Asegurar que el click funcione correctamente
+              console.log(`Navegando a: ${item.href}`);
+              onClose(); // Cerrar sidebar en mobile
+            }}
           >
             <span
               className={clsx(
-                'mr-3 flex-shrink-0',
-                isActive ? 'text-primary-600' : 'text-gray-400 group-hover:text-gray-500'
+                'mr-3 flex-shrink-0 transition-colors duration-200',
+                isCurrentRoute 
+                  ? 'text-primary-600' 
+                  : 'text-gray-400 group-hover:text-gray-500'
               )}
             >
               {item.icon}
             </span>
-            {item.name}
+            <span className="truncate">{item.name}</span>
           </NavLink>
         );
       })}
@@ -116,16 +124,27 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       {/* Mobile sidebar overlay */}
       <div
         className={clsx(
-          'fixed inset-0 flex z-40 md:hidden',
-          isOpen ? 'block' : 'hidden'
+          'fixed inset-0 flex z-40 md:hidden transition-opacity duration-300',
+          isOpen 
+            ? 'opacity-100 pointer-events-auto' 
+            : 'opacity-0 pointer-events-none'
         )}
       >
-        <div
-          className="fixed inset-0 bg-gray-600 bg-opacity-75"
+        {/* Overlay background */}
+        <div 
+          className="fixed inset-0 bg-gray-600 bg-opacity-75 transition-opacity"
           onClick={onClose}
+          aria-hidden="true"
         />
         
-        <div className="relative flex-1 flex flex-col max-w-xs w-full bg-white">
+        {/* Sidebar panel */}
+        <div
+          className={clsx(
+            'relative flex-1 flex flex-col max-w-xs w-full bg-white transform transition-transform duration-300 ease-in-out',
+            isOpen ? 'translate-x-0' : '-translate-x-full'
+          )}
+        >
+          {/* Close button */}
           <div className="absolute top-0 right-0 -mr-12 pt-2">
             <button
               type="button"
@@ -135,10 +154,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
               <span className="sr-only">Cerrar sidebar</span>
               <svg
                 className="h-6 w-6 text-white"
-                xmlns="http://www.w3.org/2000/svg"
                 fill="none"
-                viewBox="0 0 24 24"
                 stroke="currentColor"
+                viewBox="0 0 24 24"
               >
                 <path
                   strokeLinecap="round"
@@ -149,65 +167,30 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
               </svg>
             </button>
           </div>
-          
+
+          {/* Sidebar content */}
           <div className="flex-1 h-0 pt-5 pb-4 overflow-y-auto">
             <div className="flex-shrink-0 flex items-center px-4">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="h-8 w-8 bg-primary-600 rounded-lg flex items-center justify-center">
-                    <span className="text-white font-bold text-sm">SI</span>
-                  </div>
-                </div>
-                <div className="ml-3">
-                  <p className="text-base font-semibold text-gray-800">
-                    Inventario
-                  </p>
-                </div>
-              </div>
+              <h1 className="text-xl font-bold text-gray-900">
+                Sistema de Inventario
+              </h1>
             </div>
             <Navigation />
           </div>
         </div>
       </div>
 
-      {/* Desktop sidebar */}
-      <div className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0">
-        <div className="flex-1 flex flex-col min-h-0 border-r border-gray-200 bg-white">
-          <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
-            <div className="flex items-center flex-shrink-0 px-4">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="h-8 w-8 bg-primary-600 rounded-lg flex items-center justify-center">
-                    <span className="text-white font-bold text-sm">SI</span>
-                  </div>
-                </div>
-                <div className="ml-3">
-                  <p className="text-base font-semibold text-gray-800">
-                    Sistema Inventario
-                  </p>
-                </div>
+      {/* Static sidebar for desktop */}
+      <div className="hidden md:flex md:flex-shrink-0">
+        <div className="flex flex-col w-64">
+          <div className="flex flex-col h-0 flex-1 border-r border-gray-200 bg-white">
+            <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
+              <div className="flex items-center flex-shrink-0 px-4">
+                <h1 className="text-xl font-bold text-gray-900">
+                  Sistema de Inventario
+                </h1>
               </div>
-            </div>
-            <Navigation />
-          </div>
-          
-          <div className="flex-shrink-0 flex border-t border-gray-200 p-4">
-            <div className="flex items-center">
-              <div>
-                <img
-                  className="inline-block h-9 w-9 rounded-full"
-                  src="https://ui-avatars.com/api/?name=Usuario&background=3b82f6&color=fff"
-                  alt=""
-                />
-              </div>
-              <div className="ml-3">
-                <p className="text-sm font-medium text-gray-700 group-hover:text-gray-900">
-                  Usuario
-                </p>
-                <p className="text-xs font-medium text-gray-500 group-hover:text-gray-700">
-                  Ver perfil
-                </p>
-              </div>
+              <Navigation />
             </div>
           </div>
         </div>
