@@ -1,366 +1,250 @@
 // ===============================================
-// RUTAS DE CATEGORÍAS - CRUD COMPLETO
+// RUTAS DE CATEGORÍAS
 // ===============================================
 
 const express = require('express');
-const { body, param, validationResult } = require('express-validator');
-const { query } = require('../config/database');
-const { authenticateToken, authorizeRoles } = require('../middleware/auth');
+const { body, validationResult } = require('express-validator');
+const pool = require('../config/database');
+
 const router = express.Router();
-
-// ===============================================
-// VALIDACIONES
-// ===============================================
-const categoryValidation = [
-    body('name')
-        .trim()
-        .isLength({ min: 1, max: 100 })
-        .withMessage('El nombre de la categoría debe tener entre 1 y 100 caracteres')
-        .matches(/^[a-zA-ZáéíóúÁÉÍÓÚñÑ0-9\s\-_]+$/)
-        .withMessage('El nombre solo puede contener letras, números, espacios, guiones y guiones bajos'),
-    body('description')
-        .optional()
-        .trim()
-        .isLength({ max: 500 })
-        .withMessage('La descripción no puede exceder 500 caracteres')
-];
-
-const idValidation = [
-    param('id').isInt({ min: 1 }).withMessage('ID debe ser un número entero válido')
-];
 
 // ===============================================
 // OBTENER TODAS LAS CATEGORÍAS
 // ===============================================
-router.get('/', authenticateToken, async (req, res) => {
-    try {
-        const { include_stats = 'false' } = req.query;
-
-        let baseQuery = `
-            SELECT 
-                c.id,
-                c.name,
-                c.description,
-                c.is_active,
-                c.created_at,
-                c.updated_at
-        `;
-
-        if (include_stats === 'true') {
-            baseQuery += `,
-                COUNT(p.id) as product_count,
-                COALESCE(SUM(p.quantity), 0) as total_quantity,
-                COALESCE(SUM(p.price * p.quantity), 0) as total_value
-            `;
-        }
-
-        baseQuery += `
-            FROM categories c
-        `;
-
-        if (include_stats === 'true') {
-            baseQuery += `
-                LEFT JOIN products p ON c.id = p.category_id AND p.is_active = true
-            `;
-        }
-
-        baseQuery += ` WHERE c.is_active = true`;
-
-        if (include_stats === 'true') {
-            baseQuery += `
-                GROUP BY c.id, c.name, c.description, c.is_active, c.created_at, c.updated_at
-            `;
-        }
-
-        baseQuery += ` ORDER BY c.name ASC`;
-
-        const result = await query(baseQuery);
-
-        res.json({
-            success: true,
-            data: {
-                categories: result.rows,
-                count: result.rows.length
-            }
-        });
-
-    } catch (error) {
-        console.error('❌ Error obteniendo categorías:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error interno del servidor'
-        });
+router.get('/', async (req, res) => {
+  try {
+    console.log('📁 Obteniendo categorías...');
+    
+    const { include_stats } = req.query;
+    
+    let query = `
+      SELECT c.id, c.name, c.description, c.created_at, c.updated_at
+    `;
+    
+    if (include_stats) {
+      query += `, COUNT(p.id) as product_count`;
     }
+    
+    query += ` FROM categories c`;
+    
+    if (include_stats) {
+      query += ` LEFT JOIN products p ON c.id = p.category_id GROUP BY c.id, c.name, c.description, c.created_at, c.updated_at`;
+    }
+    
+    query += ` ORDER BY c.created_at DESC`;
+
+    const result = await pool.query(query);
+
+    res.json({
+      success: true,
+      data: {
+        categories: result.rows
+      }
+    });
+
+    console.log(`✅ Categorías obtenidas: ${result.rows.length}`);
+
+  } catch (error) {
+    console.error('❌ Error al obtener categorías:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
 });
 
 // ===============================================
 // OBTENER CATEGORÍA POR ID
 // ===============================================
-router.get('/:id', authenticateToken, idValidation, async (req, res) => {
-    try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                message: 'ID inválido',
-                errors: errors.array()
-            });
-        }
+router.get('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
 
-        const categoryId = req.params.id;
+    const result = await pool.query(`
+      SELECT c.*, COUNT(p.id) as product_count
+      FROM categories c
+      LEFT JOIN products p ON c.id = p.category_id
+      WHERE c.id = $1
+      GROUP BY c.id, c.name, c.description, c.created_at, c.updated_at
+    `, [id]);
 
-        const result = await query(`
-            SELECT 
-                c.id,
-                c.name,
-                c.description,
-                c.is_active,
-                c.created_at,
-                c.updated_at,
-                COUNT(p.id) as product_count,
-                COALESCE(SUM(p.quantity), 0) as total_quantity,
-                COALESCE(SUM(p.price * p.quantity), 0) as total_value
-            FROM categories c
-            LEFT JOIN products p ON c.id = p.category_id AND p.is_active = true
-            WHERE c.id = $1
-            GROUP BY c.id, c.name, c.description, c.is_active, c.created_at, c.updated_at
-        `, [categoryId]);
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Categoría no encontrada'
-            });
-        }
-
-        const category = result.rows[0];
-
-        res.json({
-            success: true,
-            data: {
-                category
-            }
-        });
-
-    } catch (error) {
-        console.error('❌ Error obteniendo categoría:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error interno del servidor'
-        });
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Categoría no encontrada'
+      });
     }
+
+    res.json({
+      success: true,
+      data: {
+        category: result.rows[0]
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error al obtener categoría:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
 });
 
 // ===============================================
 // CREAR CATEGORÍA
 // ===============================================
-router.post('/', authenticateToken, categoryValidation, async (req, res) => {
-    try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                message: 'Datos inválidos',
-                errors: errors.array()
-            });
-        }
-
-        const { name, description } = req.body;
-
-        // Verificar si ya existe una categoría con ese nombre
-        const existingCategory = await query(
-            'SELECT id FROM categories WHERE LOWER(name) = LOWER($1) AND is_active = true',
-            [name]
-        );
-
-        if (existingCategory.rows.length > 0) {
-            return res.status(409).json({
-                success: false,
-                message: 'Ya existe una categoría con ese nombre'
-            });
-        }
-
-        const result = await query(
-            `INSERT INTO categories (name, description)
-             VALUES ($1, $2)
-             RETURNING *`,
-            [name, description]
-        );
-
-        const newCategory = result.rows[0];
-
-        console.log(`✅ Categoría creada: ${name} por ${req.user.username}`);
-
-        res.status(201).json({
-            success: true,
-            message: 'Categoría creada exitosamente',
-            data: {
-                category: newCategory
-            }
-        });
-
-    } catch (error) {
-        console.error('❌ Error creando categoría:', error);
-        
-        if (error.code === '23505') {
-            return res.status(409).json({
-                success: false,
-                message: 'Ya existe una categoría con ese nombre'
-            });
-        }
-
-        res.status(500).json({
-            success: false,
-            message: 'Error interno del servidor'
-        });
+router.post('/', [
+  body('name').isLength({ min: 2, max: 100 }).withMessage('El nombre debe tener entre 2 y 100 caracteres'),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Datos de entrada inválidos',
+        errors: errors.array()
+      });
     }
+
+    const { name, description } = req.body;
+
+    // Verificar que no existe una categoría con el mismo nombre
+    const existingCategory = await pool.query('SELECT id FROM categories WHERE name = $1', [name]);
+    if (existingCategory.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Ya existe una categoría con ese nombre'
+      });
+    }
+
+    const result = await pool.query(`
+      INSERT INTO categories (name, description, created_at, updated_at)
+      VALUES ($1, $2, NOW(), NOW())
+      RETURNING *
+    `, [name, description || '']);
+
+    res.status(201).json({
+      success: true,
+      message: 'Categoría creada exitosamente',
+      data: {
+        category: result.rows[0]
+      }
+    });
+
+    console.log('✅ Categoría creada:', name);
+
+  } catch (error) {
+    console.error('❌ Error al crear categoría:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
 });
 
 // ===============================================
 // ACTUALIZAR CATEGORÍA
 // ===============================================
-router.put('/:id', authenticateToken, [...idValidation, ...categoryValidation], async (req, res) => {
-    try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                message: 'Datos inválidos',
-                errors: errors.array()
-            });
-        }
-
-        const categoryId = req.params.id;
-        const { name, description } = req.body;
-
-        // Verificar que la categoría existe
-        const existingCategory = await query(
-            'SELECT * FROM categories WHERE id = $1 AND is_active = true',
-            [categoryId]
-        );
-
-        if (existingCategory.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Categoría no encontrada'
-            });
-        }
-
-        // Verificar si ya existe otra categoría con ese nombre
-        const duplicateCategory = await query(
-            'SELECT id FROM categories WHERE LOWER(name) = LOWER($1) AND id != $2 AND is_active = true',
-            [name, categoryId]
-        );
-
-        if (duplicateCategory.rows.length > 0) {
-            return res.status(409).json({
-                success: false,
-                message: 'Ya existe otra categoría con ese nombre'
-            });
-        }
-
-        const result = await query(
-            `UPDATE categories 
-             SET name = $1, description = $2, updated_at = CURRENT_TIMESTAMP
-             WHERE id = $3
-             RETURNING *`,
-            [name, description, categoryId]
-        );
-
-        const updatedCategory = result.rows[0];
-
-        console.log(`✅ Categoría actualizada: ${name} por ${req.user.username}`);
-
-        res.json({
-            success: true,
-            message: 'Categoría actualizada exitosamente',
-            data: {
-                category: updatedCategory
-            }
-        });
-
-    } catch (error) {
-        console.error('❌ Error actualizando categoría:', error);
-        
-        if (error.code === '23505') {
-            return res.status(409).json({
-                success: false,
-                message: 'Ya existe una categoría con ese nombre'
-            });
-        }
-
-        res.status(500).json({
-            success: false,
-            message: 'Error interno del servidor'
-        });
+router.put('/:id', [
+  body('name').isLength({ min: 2, max: 100 }).withMessage('El nombre debe tener entre 2 y 100 caracteres'),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Datos de entrada inválidos',
+        errors: errors.array()
+      });
     }
+
+    const { id } = req.params;
+    const { name, description } = req.body;
+
+    // Verificar que la categoría existe
+    const categoryExists = await pool.query('SELECT id FROM categories WHERE id = $1', [id]);
+    if (categoryExists.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Categoría no encontrada'
+      });
+    }
+
+    // Verificar que no existe otra categoría con el mismo nombre
+    const existingCategory = await pool.query('SELECT id FROM categories WHERE name = $1 AND id != $2', [name, id]);
+    if (existingCategory.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Ya existe una categoría con ese nombre'
+      });
+    }
+
+    const result = await pool.query(`
+      UPDATE categories 
+      SET name = $1, description = $2, updated_at = NOW()
+      WHERE id = $3
+      RETURNING *
+    `, [name, description || '', id]);
+
+    res.json({
+      success: true,
+      message: 'Categoría actualizada exitosamente',
+      data: {
+        category: result.rows[0]
+      }
+    });
+
+    console.log('✅ Categoría actualizada:', id);
+
+  } catch (error) {
+    console.error('❌ Error al actualizar categoría:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
 });
 
 // ===============================================
-// ELIMINAR CATEGORÍA (SOFT DELETE)
+// ELIMINAR CATEGORÍA
 // ===============================================
-router.delete('/:id', authenticateToken, idValidation, async (req, res) => {
-    try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                message: 'ID inválido',
-                errors: errors.array()
-            });
-        }
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
 
-        const categoryId = req.params.id;
-
-        // Verificar que la categoría existe
-        const existingCategory = await query(
-            'SELECT * FROM categories WHERE id = $1 AND is_active = true',
-            [categoryId]
-        );
-
-        if (existingCategory.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Categoría no encontrada'
-            });
-        }
-
-        // Verificar si tiene productos asociados
-        const productsCount = await query(
-            'SELECT COUNT(*) FROM products WHERE category_id = $1 AND is_active = true',
-            [categoryId]
-        );
-
-        const productCount = parseInt(productsCount.rows[0].count);
-
-        if (productCount > 0) {
-            return res.status(400).json({
-                success: false,
-                message: `No se puede eliminar la categoría porque tiene ${productCount} producto(s) asociado(s). Elimina o reasigna los productos primero.`
-            });
-        }
-
-        // Eliminar categoría (soft delete)
-        await query(
-            'UPDATE categories SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
-            [categoryId]
-        );
-
-        const category = existingCategory.rows[0];
-        console.log(`✅ Categoría eliminada: ${category.name} por ${req.user.username}`);
-
-        res.json({
-            success: true,
-            message: 'Categoría eliminada exitosamente'
-        });
-
-    } catch (error) {
-        console.error('❌ Error eliminando categoría:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error interno del servidor'
-        });
+    // Verificar que no hay productos usando esta categoría
+    const productsCount = await pool.query('SELECT COUNT(*) as count FROM products WHERE category_id = $1', [id]);
+    if (parseInt(productsCount.rows[0].count) > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No se puede eliminar la categoría porque tiene productos asociados'
+      });
     }
+
+    const result = await pool.query('DELETE FROM categories WHERE id = $1 RETURNING id', [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Categoría no encontrada'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Categoría eliminada exitosamente'
+    });
+
+    console.log('✅ Categoría eliminada:', id);
+
+  } catch (error) {
+    console.error('❌ Error al eliminar categoría:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
 });
 
 module.exports = router;

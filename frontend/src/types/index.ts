@@ -1,5 +1,5 @@
 // ===============================================
-// TIPOS Y INTERFACES GLOBALES
+// TIPOS Y INTERFACES PRINCIPALES
 // ===============================================
 
 // ===============================================
@@ -9,11 +9,23 @@ export interface User {
   id: number;
   username: string;
   email: string;
-  role: 'admin' | 'user' | 'viewer';
-  isActive?: boolean;
-  productsCreated?: number;
-  createdAt?: string;
-  updatedAt?: string;
+  role: 'admin' | 'user';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateUserRequest {
+  username: string;
+  email: string;
+  password: string;
+  role: 'admin' | 'user';
+}
+
+export interface UpdateUserRequest {
+  username?: string;
+  email?: string;
+  password?: string;
+  role?: 'admin' | 'user';
 }
 
 // ===============================================
@@ -33,49 +45,9 @@ export interface RegisterRequest {
 export interface AuthResponse {
   success: boolean;
   message: string;
-  data: {
-    user: User;
-    tokens: {
-      accessToken: string;
-      refreshToken: string;
-    };
-  };
-}
-
-// ===============================================
-// PRODUCTO
-// ===============================================
-export interface Product {
-  id: number;
-  name: string;
-  description?: string;
-  category_id: number;
-  category_name?: string;
-  price: number;
-  quantity: number;
-  min_stock: number;
-  total_value?: number;
-  stock_status?: 'LOW' | 'MEDIUM' | 'HIGH';
-  barcode?: string;
-  is_active?: boolean;
-  created_by?: number;
-  created_by_username?: string;
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface CreateProductRequest {
-  name: string;
-  description?: string;
-  category_id: number;
-  price: number;
-  quantity: number;
-  min_stock?: number;
-  barcode?: string;
-}
-
-export interface UpdateProductRequest extends CreateProductRequest {
-  id: number;
+  user: User;
+  accessToken: string;
+  refreshToken: string;
 }
 
 // ===============================================
@@ -84,21 +56,47 @@ export interface UpdateProductRequest extends CreateProductRequest {
 export interface Category {
   id: number;
   name: string;
-  description?: string;
-  is_active?: boolean;
-  created_at?: string;
-  updated_at?: string;
+  description: string;
   product_count?: number;
-  total_quantity?: number;
-  total_value?: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CreateCategoryRequest {
   name: string;
-  description?: string;
+  description: string;
 }
 
 export interface UpdateCategoryRequest extends CreateCategoryRequest {
+  id: number;
+}
+
+// ===============================================
+// PRODUCTO
+// ===============================================
+export interface Product {
+  id: number;
+  name: string;
+  description: string;
+  price: number;
+  quantity: number;
+  min_stock: number;
+  category_id: number;
+  category_name?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateProductRequest {
+  name: string;
+  description: string;
+  price: number;
+  quantity: number;
+  min_stock: number;
+  category_id: number;
+}
+
+export interface UpdateProductRequest extends CreateProductRequest {
   id: number;
 }
 
@@ -171,11 +169,17 @@ export interface PaginationMeta {
   has_previous: boolean;
 }
 
-export interface PaginatedResponse<T> extends ApiResponse<{
-  [key: string]: T[];
-  pagination: PaginationMeta;
-  filters?: Record<string, any>;
-}> {}
+export interface PaginatedResponse<T> {
+  success: boolean;
+  message?: string;
+  data: {
+    [K in string]: T[];
+  } & {
+    pagination: PaginationMeta;
+    filters?: Record<string, any>;
+  };
+  error?: string;
+}
 
 // ===============================================
 // FILTROS Y BÚSQUEDA

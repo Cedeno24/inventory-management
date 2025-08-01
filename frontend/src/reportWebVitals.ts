@@ -1,3 +1,8 @@
+// ===============================================
+// PASO 9.35 - frontend/src/reportWebVitals.ts
+// MÉTRICAS DE RENDIMIENTO WEB
+// ===============================================
+
 import { ReportHandler } from 'web-vitals';
 
 const reportWebVitals = (onPerfEntry?: ReportHandler) => {

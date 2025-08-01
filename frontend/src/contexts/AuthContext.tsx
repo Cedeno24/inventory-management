@@ -95,9 +95,9 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
 };
 
 // ===============================================
-// CONTEXTO
+// CREAR CONTEXTO
 // ===============================================
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // ===============================================
 // PROVIDER
@@ -106,163 +106,119 @@ export const AuthProvider: React.FC<ChildrenProps> = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
 
   // ===============================================
-  // INICIALIZAR AUTENTICACIÓN
+  // VERIFICAR TOKEN AL CARGAR
   // ===============================================
   useEffect(() => {
-    initializeAuth();
-  }, []);
+    const initializeAuth = async () => {
+      const token = Cookies.get('inventory_token');
+      const refreshToken = Cookies.get('inventory_refresh_token');
 
-  const initializeAuth = async () => {
-    try {
-      const accessToken = Cookies.get('accessToken');
-      const refreshToken = Cookies.get('refreshToken');
+      console.log('🔍 Inicializando auth, token encontrado:', !!token);
 
-      if (accessToken && refreshToken) {
-        // Verificar si el token es válido
-        const isValid = await authService.verifyToken();
-        
-        if (isValid) {
-          // Obtener perfil del usuario
+      if (token && refreshToken) {
+        try {
           const user = await authService.getProfile();
-          
+          console.log('✅ Usuario obtenido:', user);
           dispatch({
             type: 'LOGIN_SUCCESS',
             payload: {
               user,
-              accessToken,
+              accessToken: token,
               refreshToken,
             },
           });
-        } else {
+        } catch (error) {
+          console.log('❌ Error al obtener perfil:', error);
           // Token inválido, limpiar
-          Cookies.remove('accessToken');
-          Cookies.remove('refreshToken');
-          dispatch({ type: 'SET_LOADING', payload: false });
+          Cookies.remove('inventory_token');
+          Cookies.remove('inventory_refresh_token');
+          dispatch({ type: 'LOGIN_FAILURE' });
         }
       } else {
+        console.log('❌ No hay token guardado');
         dispatch({ type: 'SET_LOADING', payload: false });
       }
-    } catch (error) {
-      console.error('Error inicializando autenticación:', error);
-      dispatch({ type: 'SET_LOADING', payload: false });
-    }
-  };
+    };
+
+    initializeAuth();
+  }, []);
 
   // ===============================================
   // FUNCIONES DE AUTENTICACIÓN
   // ===============================================
   const login = async (email: string, password: string): Promise<boolean> => {
+    dispatch({ type: 'LOGIN_START' });
+
     try {
-      dispatch({ type: 'LOGIN_START' });
-
+      console.log('🔄 Intentando login para:', email);
       const response = await authService.login({ email, password });
+      console.log('✅ Login exitoso:', response);
       
-      if (response.success) {
-        const { user, tokens } = response.data;
-        
-        // Guardar tokens en cookies
-        Cookies.set('accessToken', tokens.accessToken, { 
-          expires: 1, // 1 día
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict'
-        });
-        
-        Cookies.set('refreshToken', tokens.refreshToken, { 
-          expires: 7, // 7 días
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict'
-        });
+      // Guardar tokens en cookies
+      Cookies.set('inventory_token', response.accessToken, { expires: 7 });
+      Cookies.set('inventory_refresh_token', response.refreshToken, { expires: 30 });
+      
+      console.log('💾 Tokens guardados en cookies');
 
-        dispatch({
-          type: 'LOGIN_SUCCESS',
-          payload: {
-            user,
-            accessToken: tokens.accessToken,
-            refreshToken: tokens.refreshToken,
-          },
-        });
+      dispatch({
+        type: 'LOGIN_SUCCESS',
+        payload: {
+          user: response.user,
+          accessToken: response.accessToken,
+          refreshToken: response.refreshToken,
+        },
+      });
 
-        toast.success(`¡Bienvenido ${user.username}!`);
-        return true;
-      } else {
-        dispatch({ type: 'LOGIN_FAILURE' });
-        toast.error(response.message || 'Error al iniciar sesión');
-        return false;
-      }
-    } catch (error: any) {
+      return true;
+    } catch (error) {
+      console.log('❌ Error en login:', error);
       dispatch({ type: 'LOGIN_FAILURE' });
-      toast.error(error.message || 'Error al iniciar sesión');
       return false;
     }
   };
 
   const register = async (username: string, email: string, password: string): Promise<boolean> => {
-    try {
-      dispatch({ type: 'LOGIN_START' });
+    dispatch({ type: 'LOGIN_START' });
 
+    try {
       const response = await authService.register({ username, email, password });
       
-      if (response.success) {
-        const { user, tokens } = response.data;
-        
-        // Guardar tokens en cookies
-        Cookies.set('accessToken', tokens.accessToken, { 
-          expires: 1,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict'
-        });
-        
-        Cookies.set('refreshToken', tokens.refreshToken, { 
-          expires: 7,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict'
-        });
+      // Guardar tokens en cookies
+      Cookies.set('inventory_token', response.accessToken, { expires: 7 });
+      Cookies.set('inventory_refresh_token', response.refreshToken, { expires: 30 });
 
-        dispatch({
-          type: 'LOGIN_SUCCESS',
-          payload: {
-            user,
-            accessToken: tokens.accessToken,
-            refreshToken: tokens.refreshToken,
-          },
-        });
+      dispatch({
+        type: 'LOGIN_SUCCESS',
+        payload: {
+          user: response.user,
+          accessToken: response.accessToken,
+          refreshToken: response.refreshToken,
+        },
+      });
 
-        toast.success(`¡Cuenta creada exitosamente! Bienvenido ${user.username}!`);
-        return true;
-      } else {
-        dispatch({ type: 'LOGIN_FAILURE' });
-        toast.error(response.message || 'Error al crear cuenta');
-        return false;
-      }
-    } catch (error: any) {
+      return true;
+    } catch (error) {
       dispatch({ type: 'LOGIN_FAILURE' });
-      toast.error(error.message || 'Error al crear cuenta');
       return false;
     }
   };
 
-  const logout = async () => {
-    try {
-      await authService.logout();
-    } catch (error) {
-      console.error('Error en logout:', error);
-    } finally {
-      dispatch({ type: 'LOGOUT' });
-      toast.success('Sesión cerrada exitosamente');
-    }
+  const logout = () => {
+    console.log('🚪 Cerrando sesión');
+    Cookies.remove('inventory_token');
+    Cookies.remove('inventory_refresh_token');
+    dispatch({ type: 'LOGOUT' });
+    toast.success('Sesión cerrada exitosamente');
   };
 
   const updateProfile = (userData: Partial<User>) => {
-    dispatch({
-      type: 'UPDATE_PROFILE',
-      payload: userData,
-    });
+    dispatch({ type: 'UPDATE_PROFILE', payload: userData });
   };
 
   // ===============================================
   // VALOR DEL CONTEXTO
   // ===============================================
-  const contextValue: AuthContextType = {
+  const value: AuthContextType = {
     ...state,
     login,
     register,
@@ -271,7 +227,7 @@ export const AuthProvider: React.FC<ChildrenProps> = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={contextValue}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
@@ -280,14 +236,10 @@ export const AuthProvider: React.FC<ChildrenProps> = ({ children }) => {
 // ===============================================
 // HOOK PERSONALIZADO
 // ===============================================
-export const useAuth = (): AuthContextType => {
+export const useAuth = () => {
   const context = useContext(AuthContext);
-  
   if (context === undefined) {
-    throw new Error('useAuth debe ser usado dentro de AuthProvider');
+    throw new Error('useAuth debe ser usado dentro de un AuthProvider');
   }
-  
   return context;
 };
-
-export default AuthContext;
