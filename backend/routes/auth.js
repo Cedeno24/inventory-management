@@ -1,5 +1,5 @@
 // ===============================================
-// RUTAS DE AUTENTICACIÓN - CORREGIDO
+// RUTAS DE AUTENTICACIÓN - CORREGIDAS
 // ===============================================
 
 const express = require('express');
@@ -7,11 +7,12 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const pool = require('../config/database');
+const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
 
 // ===============================================
-// RUTA DE LOGIN CON DEBUG
+// RUTA DE LOGIN CON DEBUG MEJORADO
 // ===============================================
 router.post('/login', [
   body('email').isEmail().withMessage('Debe ser un email válido'),
@@ -19,6 +20,7 @@ router.post('/login', [
 ], async (req, res) => {
   try {
     console.log('🔄 Iniciando proceso de login...');
+    console.log('📧 Datos recibidos:', { email: req.body.email, hasPassword: !!req.body.password });
     
     // Validar errores de entrada
     const errors = validationResult(req);
@@ -32,16 +34,13 @@ router.post('/login', [
     }
 
     const { email, password } = req.body;
-    console.log('📧 Email recibido:', email);
-    console.log('🔑 Password recibido:', password ? '[PRESENTE]' : '[AUSENTE]');
 
     // Buscar usuario por email
     const query = 'SELECT id, username, email, password, role, is_active FROM users WHERE email = $1 AND is_active = true';
-    console.log('🔍 Ejecutando query:', query);
-    console.log('🔍 Con parámetro:', email);
+    console.log('🔍 Buscando usuario con email:', email);
     
     const result = await pool.query(query, [email]);
-    console.log('📊 Resultado query - rows encontradas:', result.rows.length);
+    console.log('📊 Usuario encontrado:', result.rows.length > 0);
 
     if (result.rows.length === 0) {
       console.log('❌ Usuario no encontrado o inactivo');
@@ -52,20 +51,18 @@ router.post('/login', [
     }
 
     const user = result.rows[0];
-    console.log('👤 Usuario encontrado:', {
+    console.log('👤 Usuario:', {
       id: user.id,
       username: user.username,
       email: user.email,
       role: user.role,
-      is_active: user.is_active,
-      hasPassword: !!user.password
+      hasStoredPassword: !!user.password
     });
-    console.log('🔍 Hash almacenado:', user.password);
 
     // Verificar contraseña
-    console.log('🔄 Comparando contraseñas...');
+    console.log('🔄 Verificando contraseña...');
     const isValidPassword = await bcrypt.compare(password, user.password);
-    console.log('✅ Resultado comparación:', isValidPassword);
+    console.log('✅ Contraseña válida:', isValidPassword);
 
     if (!isValidPassword) {
       console.log('❌ Contraseña incorrecta');
@@ -74,8 +71,6 @@ router.post('/login', [
         message: 'Credenciales inválidas'
       });
     }
-
-    console.log('✅ Login exitoso, generando tokens...');
 
     // Generar tokens JWT
     const payload = {
@@ -95,20 +90,22 @@ router.post('/login', [
     console.log('🎟️ Tokens generados exitosamente');
 
     // Respuesta exitosa
-    res.json({
+    const response = {
       success: true,
       message: 'Login exitoso',
       user: {
         id: user.id,
         username: user.username,
         email: user.email,
-        role: user.role
+        role: user.role,
+        isActive: user.is_active
       },
       accessToken,
       refreshToken
-    });
+    };
 
-    console.log('✅ Respuesta enviada exitosamente');
+    console.log('✅ Enviando respuesta exitosa');
+    res.json(response);
 
   } catch (error) {
     console.error('💥 Error en login:', error);
@@ -141,6 +138,7 @@ router.post('/register', [
     }
 
     const { username, email, password } = req.body;
+    console.log('📧 Registrando usuario:', { username, email });
 
     // Verificar si el usuario ya existe
     const existingUser = await pool.query(
@@ -149,7 +147,8 @@ router.post('/register', [
     );
 
     if (existingUser.rows.length > 0) {
-      return res.status(400).json({
+      console.log('❌ Usuario ya existe');
+      return res.status(409).json({
         success: false,
         message: 'El usuario o email ya existe'
       });
@@ -157,6 +156,7 @@ router.post('/register', [
 
     // Hashear contraseña
     const hashedPassword = await bcrypt.hash(password, 10);
+    console.log('🔒 Contraseña hasheada');
 
     // Insertar nuevo usuario
     const newUser = await pool.query(
@@ -165,6 +165,7 @@ router.post('/register', [
     );
 
     const user = newUser.rows[0];
+    console.log('✅ Usuario creado:', user.id);
 
     // Generar tokens
     const payload = {
@@ -188,7 +189,8 @@ router.post('/register', [
         id: user.id,
         username: user.username,
         email: user.email,
-        role: user.role
+        role: user.role,
+        isActive: true
       },
       accessToken,
       refreshToken
@@ -206,34 +208,46 @@ router.post('/register', [
 });
 
 // ===============================================
-// RUTA PARA OBTENER PERFIL
+// RUTA PARA OBTENER PERFIL - CORREGIDA
 // ===============================================
-router.get('/profile', async (req, res) => {
+router.get('/profile', authenticateToken, async (req, res) => {
   try {
-    // El middleware de auth ya validó el token y agregó user al req
-    const userId = req.user.userId;
-
+    console.log('🔄 Obteniendo perfil del usuario:', req.user.userId);
+    
     const result = await pool.query(
-      'SELECT id, username, email, role, created_at, updated_at FROM users WHERE id = $1 AND is_active = true',
-      [userId]
+      'SELECT id, username, email, role, is_active, created_at, updated_at FROM users WHERE id = $1 AND is_active = true',
+      [req.user.userId]
     );
 
     if (result.rows.length === 0) {
+      console.log('❌ Usuario no encontrado');
       return res.status(404).json({
         success: false,
         message: 'Usuario no encontrado'
       });
     }
 
+    const userData = result.rows[0];
+    console.log('✅ Perfil obtenido:', userData.email);
+
     res.json({
       success: true,
+      message: 'Perfil obtenido exitosamente',
       data: {
-        user: result.rows[0]
+        user: {
+          id: userData.id,
+          username: userData.username,
+          email: userData.email,
+          role: userData.role,
+          isActive: userData.is_active,
+          createdAt: userData.created_at,
+          updatedAt: userData.updated_at
+        }
       }
     });
 
   } catch (error) {
-    console.error('Error al obtener perfil:', error);
+    console.error('💥 Error al obtener perfil:', error);
     res.status(500).json({
       success: false,
       message: 'Error interno del servidor'
@@ -242,13 +256,80 @@ router.get('/profile', async (req, res) => {
 });
 
 // ===============================================
+// RUTA DE REFRESH TOKEN
+// ===============================================
+router.post('/refresh', async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      return res.status(401).json({
+        success: false,
+        message: 'Refresh token requerido'
+      });
+    }
+
+    // Verificar refresh token
+    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secret');
+
+    // Verificar que el usuario aún existe
+    const result = await pool.query(
+      'SELECT id, username, email, role FROM users WHERE id = $1 AND is_active = true',
+      [decoded.userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({
+        success: false,
+        message: 'Usuario no encontrado'
+      });
+    }
+
+    // Generar nuevo access token
+    const user = result.rows[0];
+    const payload = {
+      userId: user.id,
+      email: user.email,
+      role: user.role
+    };
+
+    const newAccessToken = jwt.sign(payload, process.env.JWT_SECRET || 'fallback_secret', {
+      expiresIn: '24h'
+    });
+
+    res.json({
+      success: true,
+      accessToken: newAccessToken
+    });
+
+  } catch (error) {
+    console.error('Error al renovar token:', error);
+    res.status(401).json({
+      success: false,
+      message: 'Token inválido'
+    });
+  }
+});
+
+// ===============================================
 // RUTA DE LOGOUT
 // ===============================================
 router.post('/logout', (req, res) => {
-  // En JWT stateless, el logout se maneja en el frontend
+  console.log('🚪 Logout solicitado');
   res.json({
     success: true,
     message: 'Logout exitoso'
+  });
+});
+
+// ===============================================
+// RUTA DE VERIFICACIÓN (para debug)
+// ===============================================
+router.get('/verify', authenticateToken, (req, res) => {
+  res.json({
+    success: true,
+    message: 'Token válido',
+    user: req.user
   });
 });
 
